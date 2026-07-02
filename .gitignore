@@ -1,0 +1,6 @@
+build/
+buildvr/
+out/
+.vs/
+*.7z
+*.user

@@ -1,0 +1,13 @@
+{
+  "name": "stb-active-effects",
+  "version-string": "1.0.0",
+  "description": "STB Active Effects - a customizable SKSE active-effects HUD widget for Skyrim SE/AE.",
+  "homepage": "https://github.com/STB-Team/STB-Active-Effects",
+  "license": "MIT",
+  "dependencies": [
+    "nlohmann-json",
+    "rapidcsv",
+    "simpleini",
+    "spdlog"
+  ]
+}
