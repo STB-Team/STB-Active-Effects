@@ -1,6 +1,7 @@
 using namespace RE;
 #include "string.h"
 #include "WidgetActiveEffects.h"
+#include "MenuHandler.h"  // ConfigureHudIfNeeded (used by the Update hook below)
 
 #include <windows.h>
 
@@ -83,8 +84,12 @@ private:
 			else if (auto ui = UI::GetSingleton();
 					 ui && !ui->IsMenuOpen(RE::MessageBoxMenu::MENU_NAME) && !ui->IsMenuOpen(RE::DialogueMenu::MENU_NAME) &&
 					 !ui->IsMenuOpen(RE::CursorMenu::MENU_NAME) && !ui->IsMenuOpen(RE::MapMenu::MENU_NAME) &&
-					 !ui->IsMenuOpen(RE::FaderMenu::MENU_NAME) && !ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME))
+					 !ui->IsMenuOpen(RE::FaderMenu::MENU_NAME) && !ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME)) {
+				// Configure the widget once its movie has loaded (coc / new game race),
+				// then keep it visible in normal play.
+				ConfigureHudIfNeeded();
 				WidgetActiveEffects::toggle_visibility(true);
+			}
 		}
 		_Update(player, delta);
 	}

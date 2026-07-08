@@ -1,9 +1,6 @@
 #include "WidgetActiveEffects.h"
 using namespace RE;
 
-
-static int g_lastVisible = -1;
-
 WidgetActiveEffects::WidgetActiveEffects()
 {
   const auto scale_form_manager = BSScaleformManager::GetSingleton();
@@ -45,7 +42,6 @@ void WidgetActiveEffects::show()
 		message_queue->AddMessage(MENU_NAME, UI_MESSAGE_TYPE::kShow, nullptr);
 	}
   }
-  g_lastVisible = -1;
   logger::info("show (kShow) - widget menu REOPENED");
 }
 
@@ -55,7 +51,6 @@ void WidgetActiveEffects::hide()
     logger::debug("Hide menu");
     message_queue->AddMessage(MENU_NAME, UI_MESSAGE_TYPE::kHide, nullptr);
   }
-  g_lastVisible = -1;
   logger::info("hide (kHide) - widget menu CLOSED");
 }
 #include "nlohmann/json.hpp"
@@ -594,10 +589,9 @@ void WidgetActiveEffects::AdvanceMovie(const float interval, const uint32_t curr
 
 void WidgetActiveEffects::toggle_visibility(const bool mode)
 {
-  if (g_lastVisible == static_cast<int>(mode)) {
-    return;
-  }
-
+  // No caching: the per-frame Update hook calls toggle_visibility(true) every frame in
+  // normal play, which re-asserts SetVisible(true). A dedup cache would let a stale
+  // hidden state stick and the widget could vanish for good.
   const auto ui = UI::GetSingleton();
   if (!ui) {
     return;
@@ -608,6 +602,5 @@ void WidgetActiveEffects::toggle_visibility(const bool mode)
     return;
   }
 
-  g_lastVisible = static_cast<int>(mode);
   overlay_menu->uiMovie->SetVisible(mode);
 }
