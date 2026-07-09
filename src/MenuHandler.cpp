@@ -24,32 +24,54 @@ void RequestHudReconfig()
   logger::info("RequestHudReconfig");
 }
 
-void ConfigureHudIfNeeded()
+// Apply the config once we are safely in the world. Returns true when there is nothing
+// left to do. Never touches the movie while a LoadingMenu is up (that crashes Scaleform);
+// the post-load fade is fine.
+static bool TryApplyHudConfig()
 {
   if (!g_hudNeedsConfig) {
-    return;
+    return true;
   }
   const auto ui = RE::UI::GetSingleton();
   if (!ui) {
-    return;
+    return false;
+  }
+  if (ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME)) {
+    return false;  // still loading - wait
   }
   const auto widget = ui->GetMenu(WidgetActiveEffects::MENU_NAME);
   if (!widget || !widget->uiMovie) {
-    static int waitLog = 0;
-    if ((waitLog++ % 120) == 0) {
-      logger::info("ConfigureHudIfNeeded waiting: menu={} movie={}", static_cast<bool>(widget),
-        widget ? static_cast<bool>(widget->uiMovie) : false);
-    }
-    return;
+    return false;  // movie still loading
   }
-  // coc / new game never fire kPostLoadGame, so the always-open overlay is never
-  // (re)shown after the world loads. Re-send kShow once here, mirroring kPostLoadGame.
-  // There is no kHide anywhere in the flow, so this cannot cause the old churn bug.
   WidgetActiveEffects::show();
   CheckInI();
   WidgetActiveEffects::toggle_visibility(true);
   g_hudNeedsConfig = false;
-  logger::info("ConfigureHudIfNeeded: movie ready -> show + CheckInI done");
+  logger::info("HUD configured");
+  return true;
+}
+
+// Fallback path, driven every frame from the PlayerCharacter::Update hook.
+void ConfigureHudIfNeeded()
+{
+  TryApplyHudConfig();
+}
+
+// Primary path: polled through the SKSE task queue, started the moment the loading screen
+// closes. The task queue keeps ticking during the post-load fade-in, whereas the player
+// Update hook is paused then - so this applies the config immediately instead of ~1s later.
+// Bounded so it can never spin forever.
+static void PollHudConfig(int attempts)
+{
+  if (TryApplyHudConfig()) {
+    return;
+  }
+  if (attempts <= 0) {
+    return;  // give up; the Update hook keeps trying as a fallback
+  }
+  if (const auto task = SKSE::GetTaskInterface()) {
+    task->AddTask([attempts]() { PollHudConfig(attempts - 1); });
+  }
 }
 
 // Is any HUD-blocking menu (other than a_except) still open? DialogueMenu counts:
@@ -93,8 +115,9 @@ static void QueueHudRestore()
       return;
     }
     if (!AnyBlockingMenuOpen(ui, RE::BSFixedString{})) {
-      WidgetActiveEffects::toggle_visibility(true);
-      CheckInI();
+      WidgetActiveEffects::toggle_visibility(true);  // visibility only. Do NOT CheckInI
+                     // from a deferred task: its setParam/frame invokes crash Scaleform
+                     // when the movie hasn't advanced yet on a cold load.
     }
   });
 }
@@ -111,17 +134,18 @@ auto MenuHandler::ProcessEvent(const MenuOpenCloseEvent* event, BSTEventSource<M
 
   const auto& name = event->menuName;
 
-  // Loading screens / F9 quickload. CheckInI() runs unconditionally; movies may still
-  // be loading, so RequestHudReconfig lets the Update hook re-apply once they are ready.
+  // Loading screens / F9 quickload. Do NOT CheckInI here: the movie is mid-transition and
+  // a frame rebuild crashes Scaleform (load-time CTD). Just flag a reconfig;
+  // ConfigureHudIfNeeded applies it once we are back in the world.
   if (name == LoadingMenu::MENU_NAME) {
-    CheckInI();
     RequestHudReconfig();
     if (event->opening) {
       WidgetActiveEffects::toggle_visibility(false);
     } else {
-      WidgetActiveEffects::show();  // kShow now (like the original / kPostLoadGame); coc relies on this
+      WidgetActiveEffects::show();  // kShow (safe: just queues a UI message); coc relies on this
       WidgetActiveEffects::toggle_visibility(true);
-      QueueHudRestore();
+      PollHudConfig(600);  // apply config as soon as the load ends, via the task queue
+                           // (ticks during the fade, unlike the player Update hook)
     }
     return BSEventNotifyControl::kContinue;
   }

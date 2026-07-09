@@ -92,8 +92,19 @@ static bool InfoLoad = false;
 
 void CheckInI()
 {
-	if (const auto ui = UI::GetSingleton();
-		ui && ui->GetMenu(WidgetActiveEffects::MENU_NAME) && ui->GetMenu(WidgetActiveEffects::MENU_NAME)->uiMovie) {
+	const auto ui = UI::GetSingleton();
+	if (!ui) {
+		return;
+	}
+	// The widget movie is mid-transition (torn down / rebuilt) only while a LoadingMenu is
+	// active; invoking its frame-changing AS then crashes Scaleform. The old kHide-based
+	// flow was safe only because it CLOSED the menu during loads. We keep it open now, so
+	// we skip explicitly during loads. (Only LoadingMenu - not the post-load fade: the
+	// movie is already settled during the fade, and configuring then avoids the ~1s pop.)
+	if (ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME)) {
+		return;
+	}
+	if (ui->GetMenu(WidgetActiveEffects::MENU_NAME) && ui->GetMenu(WidgetActiveEffects::MENU_NAME)->uiMovie) {
 		const GFxValue scalex = Data::scalexAeff_;
 		const GFxValue scale = Data::scaleAeff_;
 		const GFxValue scaley = Data::scaleyAeff_;
